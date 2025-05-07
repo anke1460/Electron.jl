@@ -1,6 +1,8 @@
+
 module Electron
 
 using JSON, URIs, Sockets, Base64, Pkg.Artifacts, FilePaths, UUIDs
+using RelocatableFolders
 
 export Application, Window, URI, windows, applications, msgchannel, toggle_devtools, load, ElectronAPI
 
@@ -123,6 +125,8 @@ function get_electron_binary_cmd()
     end
 end
 
+const MAIN_JS = @path joinpath(@__DIR__, "main.js")
+
 """
     function Application()
 
@@ -130,7 +134,9 @@ Start a new Electron application. This will start a new process
 for that Electron app and return an instance of `Application` that
 can be used in the construction of Electron windows.
 """
-function Application(;mainjs=joinpath(@__DIR__, "main.js"), additional_electron_args = String[])
+function Application(; mainjs=normpath(String(MAIN_JS)), additional_electron_args=String[])
+    @assert isfile(mainjs)
+    read(mainjs) # This seems to be required to not hang windows CI?!
     electron_path = get_electron_binary_cmd()
 
     id = replace(string(uuid1()), "-"=>"")
@@ -146,13 +152,14 @@ function Application(;mainjs=joinpath(@__DIR__, "main.js"), additional_electron_
     # proc = open(`$electron_path --inspect-brk=5858 $mainjs $main_pipe_name $sysnotify_pipe_name $secure_cookie_encoded`, "w", stdout)
     electron_cmd = Cmd([
         electron_path,
+        "--no-sandbox",
         mainjs,
         main_pipe_name,
         sysnotify_pipe_name,
         secure_cookie_encoded,
         additional_electron_args...
     ])
-    
+
     new_env = copy(ENV)
     if haskey(new_env, "ELECTRON_RUN_AS_NODE")
         delete!(new_env, "ELECTRON_RUN_AS_NODE")
